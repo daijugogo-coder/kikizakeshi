@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Kikizakeshi</title>
+
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+
+  <meta name="theme-color" content="#0f1115">
+</head>
+
+<body>
+  <main class="wrap">
+
+    <header class="header">
+      <div class="title-row">
+        <h1 class="brand">
+          <span class="brand-title">Kikizakeshi</span>
+          <span class="brand-sub">(Sake Concierge)</span>
+        </h1>
+        <button type="button" class="iconbtn" id="resetChatBtn" aria-label="Clear conversation"
+          title="Clear conversation (reset chat)">
+          <span class="icon">×</span>
+        </button>
+      </div>
+      <p class="sub">Bring a barcode/label photo — or just type a note. The UI stays in English; replies can be
+        multilingual.</p>
+    </header>
+
+    <section class="chat" id="chat" aria-live="polite">
+      <div class="msg clerk">
+        <div class="name">Clerk</div>
+        <div class="bubble">{{ welcome }}</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <form id="analyzeForm" class="form">
+
+        <!-- Photo -->
+        <div class="label">
+          <div class="label-text">
+            Photo (barcode / front label / back label)
+            <div class="tiny muted">You can send photos, text, or both. Submit is enabled if you have either.</div>
+          </div>
+
+          <div class="row">
+            <label class="filepick" title="Take or choose a photo">
+              <input type="file" name="photos" id="photos" accept="image/*" capture="environment" multiple hidden />
+              <span class="filepick-btn">
+                <!-- camera icon -->
+                <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+                  <path d="M4 7h3l2-2h6l2 2h3v12H4V7z" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linejoin="round" />
+                  <circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="2" />
+                </svg>
+                <span class="btntext">Photo</span>
+              </span>
+            </label>
+
+            <div class="filehint" id="fileHint">No photo selected</div>
+          </div>
+        </div>
+
+        <!-- Text -->
+        <label class="label">
+          <span class="label-text">Note (optional)</span>
+          <input class="text" type="text" name="customer_text" id="customer_text"
+            placeholder="Example: “Recommend something crisp.” or “Answer in Spanish.”" />
+        </label>
+
+        <div class="actions">
+          <button class="btn" id="submitBtn" type="submit" disabled>
+            <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+              <path d="M22 2L11 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              <path d="M22 2L15 22L11 13L2 9L22 2Z" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linejoin="round" />
+            </svg>
+            <span class="btntext">Send</span>
+          </button>
+        </div>
+
+
+      </form>
+    </section>
+
+  </main>
+
+  <!-- Modal -->
+  <div class="modal-backdrop" id="modal" role="dialog" aria-modal="true" aria-label="Analyzing">
+    <div class="modal">
+      <p class="modal-title">Analyzing…</p>
+      <p class="modal-sub">Reading your photo and note.</p>
+      <div class="spinner" aria-hidden="true"></div>
+    </div>
+  </div>
+
+  <script>
+    const chat = document.getElementById("chat");
+    const photosEl = document.getElementById("photos");
+    const customerTextEl = document.getElementById("customer_text");
+    const fileHintEl = document.getElementById("fileHint");
+    const submitBtn = document.getElementById("submitBtn");
+    const resetChatBtn = document.getElementById("resetChatBtn");
+    const formEl = document.getElementById("analyzeForm");
+    const modalEl = document.getElementById("modal");
+
+    const initialWelcome =
+      document.querySelector("#chat .msg.clerk .bubble")?.textContent
+      || "Welcome. Snap a barcode / label — or type a note.";
+
+    // Keep session
+    let sessionId = localStorage.getItem("kikizakeshi_session_id") || "";
+
+    // iOS Safari sometimes behaves better without multiple
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    if (isIOS) photosEl.removeAttribute("multiple");
+
+    function showModal() {
+      modalEl.style.display = "flex";
+    }
+    function hideModal() {
+      modalEl.style.display = "none";
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function appendUserMessage(text) {
+      const body = text && text.trim() ? text : "(Sent photo)";
+      chat.insertAdjacentHTML("beforeend", `
+        <div class="msg user">
+          <div class="name">You</div>
+          <div class="bubble">${escapeHtml(body)}</div>
+        </div>
+      `);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function appendClerkMessage(text) {
+      chat.insertAdjacentHTML("beforeend", `
+        <div class="msg clerk">
+          <div class="name">Clerk</div>
+          <div class="bubble">${escapeHtml(text || "")}</div>
+        </div>
+      `);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function updateFileUI() {
+      const n = photosEl.files.length;
+      const hasText = customerTextEl.value.trim().length > 0;
+      fileHintEl.textContent = n ? `${n} selected` : "No photo selected";
+      submitBtn.disabled = !(n || hasText);
+    }
+
+    photosEl.addEventListener("change", updateFileUI);
+    customerTextEl.addEventListener("input", updateFileUI);
+
+    resetChatBtn.addEventListener("click", async () => {
+      if (!confirm("Reset this chat?")) return;
+
+      chat.innerHTML = `
+        <div class="msg clerk">
+          <div class="name">Clerk</div>
+          <div class="bubble">${escapeHtml(initialWelcome)}</div>
+        </div>
+      `;
+      customerTextEl.value = "";
+      photosEl.value = "";
+      updateFileUI();
+
+      if (sessionId) {
+        try {
+          await fetch("/api/reset", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: sessionId })
+          });
+        } catch (_) { }
+      }
+
+      sessionId = "";
+      localStorage.removeItem("kikizakeshi_session_id");
+    });
+
+    function formatLLM(llm) {
+      if (!llm || typeof llm !== "object") return "";
+
+      // UIは一切再構成しない
+      // 言語・構造・内容はすべてサーバ側を正とする
+      return String(llm.answer || "").trim();
+    }
+
+    formEl.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const n = photosEl.files.length;
+      const text = customerTextEl.value.trim();
+      if (!n && !text) return;
+
+      appendUserMessage(text);
+
+      const fd = new FormData();
+      for (const f of photosEl.files) fd.append("photos", f);
+      fd.append("customer_text", text);
+      if (sessionId) fd.append("session_id", sessionId);
+
+      // Pass locale info as-is (NO locale-to-language mapping here)
+      fd.append("client_locale", navigator.language || "");
+      fd.append("client_locales", JSON.stringify(navigator.languages || []));
+
+      showModal();
+
+      try {
+        const res = await fetch("/api/analyze", { method: "POST", body: fd });
+
+        if (!res.ok) {
+          const t = await res.text();
+          appendClerkMessage(`Error: ${res.status} ${t}`);
+          return;
+        }
+
+        const data = await res.json();
+
+        if (data.session_id) {
+          sessionId = data.session_id;
+          localStorage.setItem("kikizakeshi_session_id", sessionId);
+        }
+
+        if (data.status === "need_more_info") {
+          appendClerkMessage(data.message || "Please send a photo or type a note.");
+          return;
+        }
+
+        if (data.status === "need_retake") {
+          appendClerkMessage(data.message || "Please retake the photo and try again.");
+          return;
+        }
+
+        // Source of truth: data.llm
+        if (data.llm) {
+          appendClerkMessage(formatLLM(data.llm));
+        } else {
+          appendClerkMessage("Sorry — response format was unexpected. Please try again.");
+        }
+
+        // Clear inputs
+        customerTextEl.value = "";
+        photosEl.value = "";
+        updateFileUI();
+
+      } catch (err) {
+        appendClerkMessage(`Network error: ${err?.message ?? err}`);
+      } finally {
+        hideModal();
+      }
+    });
+
+    updateFileUI();
+  </script>
+
+</body>
+
+</html>

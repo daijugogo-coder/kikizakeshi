@@ -1,0 +1,288 @@
+:root{
+  --bg:#0b0d10;
+  --card:#12161c;
+  --text:#e8eef7;
+  --muted:#9aa7b7;
+  --line:#232a33;
+  --accent:#2a5bd7;
+  --accent2: rgba(60, 120, 255, .18);
+}
+
+*{ box-sizing:border-box; }
+html, body{ height:100%; }
+body{
+  margin:0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.wrap{
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 14px;
+}
+
+.header h1{
+  margin:0;
+  font-size: 22px;
+  letter-spacing: .2px;
+}
+.title-row{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sub {
+  margin: 10px 0 20px;  /* 上部に余白を追加 */
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+  padding-right: 60px;  /* キャンセルボタンとのスペースを確保 */
+}
+
+.chat{
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  height: 40vh;
+  overflow:auto;
+}
+
+/* iOS Safari / モダンブラウザ用 */
+@supports (height: 1dvh) {
+  .chat{
+    max-height: 34dvh;
+  }
+  .wrap{
+    min-height: 100dvh;
+  }
+}
+
+/* 小さい画面（iPhone SE想定） */
+@media (max-width: 480px) {
+  .chat { max-height: 34vh; }
+  .iconbtn::after { display: none; }
+}
+
+/* small-height devices like iPhone SE */
+@media (max-width: 480px) and (max-height: 740px) {
+  .chat { max-height: 28vh; }
+}
+
+.msg{
+  display:flex;
+  gap:10px;
+  margin: 10px 0;
+}
+
+.name{
+  min-width: 60px;
+  color: var(--muted);
+  font-size: 12px;
+  padding-top: 6px;
+}
+
+.bubble{
+  background: #0f1319;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  flex: 1;
+}
+
+.msg.user .bubble{
+  background: #131a24;
+}
+
+.panel{
+  margin-top: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.form{
+  display:flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.label{
+  display:grid;
+  gap: 8px;
+}
+
+.label-text{
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.row{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.text{
+  width:100%;
+  background: #0f1319;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.filepick-btn{
+  display:inline-flex;
+  align-items:center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--accent2);
+  border: 1px solid rgba(255,255,255,.12);
+  cursor: pointer;
+  user-select: none;
+  color: var(--text);
+}
+
+.filehint{
+  font-size: 12px;
+  color: var(--muted);
+  opacity: .9;
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: auto;  /* 幅を自動調整 */
+  background: var(--accent);
+  color: white;
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 24px;  /* パディングを調整 */
+  cursor: pointer;
+  font-size: 14px;
+  max-width: 200px;  /* 最大幅を設定 */
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: var(--text);
+  font-size: 18px;  /* ×アイコンのフォントサイズ */
+}
+
+.iconbtn:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.iconbtn:active {
+  transform: translateY(1px);
+}
+
+.icon {
+  font-weight: bold;
+}
+
+
+
+.btntext{
+  font-weight: 600;
+  letter-spacing: .2px;
+}
+
+/* Modal */
+.modal-backdrop{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.modal{
+  width: min(520px, 92vw);
+  border-radius: 14px;
+  padding: 18px 16px;
+  background: rgba(24,24,28,.96);
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: 0 20px 60px rgba(0,0,0,.45);
+}
+
+.modal-title{
+  margin:0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.modal-sub{
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.spinner{
+  margin-top: 12px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.25);
+  border-top-color: rgba(255,255,255,.85);
+  animation: spin .9s linear infinite;
+}
+
+@keyframes spin{
+  to { transform: rotate(360deg); }
+}
+
+.muted{ color: var(--muted); }
+.tiny{ font-size: 12px; }
+
+.brand{
+  display:flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.brand-sub{
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+html, body{
+  height: 100%;
+  overscroll-behavior: contain;
+}
+
+.wrap{
+  min-height: 100vh;
+}
+
+
+

@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.bandit
+security/
+.env
+.DS_Store
