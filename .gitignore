@@ -1,7 +1,26 @@
-.venv/
+# Python
 __pycache__/
 *.pyc
-.bandit
-security/
+
+# Virtual env
+.venv/
+
+# Security / local secrets
 .env
+security/
+
+# Bandit reports
+.bandit
+
+# OS-specific
 .DS_Store
+
+# Build artifacts (optional but good practice)
+build/
+dist/
+.pytest_cache/
+*.log
+*.out
+
+# Node modules (もし将来フロントを追加する可能性があるなら)
+node_modules/

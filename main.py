@@ -18,6 +18,9 @@ from dataclasses import dataclass, asdict, field
 from typing import Any, Dict, List, Optional, Tuple
 import logging
 import requests
+from datetime import datetime, timezone  # ★追加
+
+from pathlib import Path
 
 from fastapi import FastAPI, File, Form, UploadFile, Request, Body
 from fastapi.responses import HTMLResponse
@@ -64,6 +67,137 @@ FINAL_FOOTER = (
 SESSIONS: Dict[str, Dict[str, Any]] = {}
 
 
+# ============================================================
+# Store customization (optional per-shop overrides)
+# ============================================================
+def load_store_custom() -> Dict[str, Any]:
+    """
+    Load optional store_custom.json.
+
+    Structure example:
+    {
+      "store_name": "...",
+      "location_hint": "Honolulu, Hawaii ...",
+      "special_ingredients": [ ... ],
+      "special_messages": [ ... ]
+    }
+
+    If file is missing or invalid, return an empty/default dict.
+    """
+    path = Path("store_custom.json")
+    default: Dict[str, Any] = {
+        "store_name": None,
+        "location_hint": None,
+        "special_ingredients": [],
+        "special_messages": [],
+    }
+
+    try:
+        if not path.exists():
+            logging.info(
+                "store_custom.json not found; using default (empty) store_custom."
+            )
+            return default
+
+        raw = path.read_text(encoding="utf-8")
+        data = json.loads(raw)
+
+        if not isinstance(data, dict):
+            logging.warning("store_custom.json is not a JSON object; using default.")
+            return default
+
+        # ensure required keys exist
+        data.setdefault("store_name", None)
+        data.setdefault("location_hint", None)
+        data.setdefault("special_ingredients", [])
+        data.setdefault("special_messages", [])
+
+        logging.info("store_custom.json loaded successfully.")
+        return data
+
+    except Exception as e:
+        logging.error(f"Failed to load store_custom.json: {e}")
+        logging.error(traceback.format_exc())
+        return default
+
+
+STORE_CUSTOM: Dict[str, Any] = load_store_custom()
+
+
+# ----------------------------------------------------------
+# Locale から hemisphere と season を推定するユーティリティ
+# ----------------------------------------------------------
+def _extract_country_code(locale: str) -> Optional[str]:
+    """
+    "en-US", "ja_JP" などの locale 文字列から
+    国コード部分（us, jp など）を抽出する。
+    """
+    if not locale:
+        return None
+    loc = locale.strip()
+    for sep in ("-", "_"):
+        if sep in loc:
+            return loc.split(sep)[-1].lower()
+    # "en" のように国コードが無い場合もあるので None
+    if len(loc) == 2:
+        return None
+    return None
+
+
+def infer_hemisphere_from_locale(locale: str) -> str:
+    """
+    locale からざっくり北半球 / 南半球を推定する。
+    - 戻り値: "north" / "south"
+    - 判定不能な場合は "north" をデフォルトとする（世界人口的にもこちらが多数派）
+    """
+    country = _extract_country_code(locale)
+    if not country:
+        return "north"
+
+    # 南半球に属する主な国コード
+    south_countries = {
+        "au",  # Australia
+        "nz",  # New Zealand
+        "za",  # South Africa
+        "ar",  # Argentina
+        "br",  # Brazil
+        "cl",  # Chile
+        "pe",  # Peru
+        "uy",  # Uruguay
+        "py",  # Paraguay
+    }
+
+    if country in south_countries:
+        return "south"
+
+    # それ以外は北半球扱い
+    return "north"
+
+
+def get_season_for_hemisphere(hemisphere: str, now: Optional[datetime] = None) -> str:
+    """
+    hemisphere と現在日時から季節ラベルを算出する。
+    - hemisphere: "north" / "south" 以外は "north" 相当として扱う
+    - 戻り値: "spring" / "summer" / "autumn" / "winter"
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    month = now.month
+
+    # 南半球の場合は 6 ヶ月シフトして北半球と同じロジックで扱う
+    if hemisphere == "south":
+        month = ((month + 6 - 1) % 12) + 1
+
+    if month in (3, 4, 5):
+        return "spring"
+    if month in (6, 7, 8):
+        return "summer"
+    if month in (9, 10, 11):
+        return "autumn"
+    return "winter"
+
+
 def get_session(session_id: Optional[str]) -> Tuple[str, Dict[str, Any]]:
     if session_id and session_id in SESSIONS:
         return session_id, SESSIONS[session_id]
@@ -71,9 +205,9 @@ def get_session(session_id: Optional[str]) -> Tuple[str, Dict[str, Any]]:
     new_id = str(uuid.uuid4())
     SESSIONS[new_id] = {
         "created_at": time.time(),
-        "preferred_language": None,   # "en" / "ja" / "es" / ...
-        "last_answer": None,          # last visible answer string
-        "last_payload": None,         # last payload (debug/translation context)
+        "preferred_language": None,  # "en" / "ja" / "es" / ...
+        "last_answer": None,  # last visible answer string
+        "last_payload": None,  # last payload (debug/translation context)
     }
     return new_id, SESSIONS[new_id]
 
@@ -172,7 +306,15 @@ def locale_to_cuisine(locale: str) -> str:
 # User intent detection (language override + translation request)
 # ============================================================
 _LANG_ALIASES = {
-    "en": ["english", "in english", "answer in english", "explain in english", "英語", "英語で", "英訳"],
+    "en": [
+        "english",
+        "in english",
+        "answer in english",
+        "explain in english",
+        "英語",
+        "英語で",
+        "英訳",
+    ],
     "ja": ["japanese", "日本語", "日本語で"],
     "es": ["spanish", "español", "スペイン語", "スペイン語で"],
     "fr": ["french", "français", "フランス語", "フランス語で"],
@@ -216,7 +358,10 @@ def is_translate_request(customer_text: str) -> bool:
         return False
 
     # English patterns commonly used by you
-    if any(x in t for x in ["translate", "translation", "explain in english", "in english please"]):
+    if any(
+        x in t
+        for x in ["translate", "translation", "explain in english", "in english please"]
+    ):
         return True
 
     # Japanese patterns
@@ -240,7 +385,7 @@ def run_ocr(image_bytes: bytes) -> str:
             logging.error(f"Vision API error: {response.error.message}")
             raise RuntimeError(f"Vision API error: {response.error.message}")
 
-        text = (response.full_text_annotation.text or "")
+        text = response.full_text_annotation.text or ""
         logging.info(f"OCR: done (chars={len(text)}) snippet={text[:100]!r}")
         return text
 
@@ -259,8 +404,19 @@ def is_readable_enough(text: str) -> bool:
 # Extraction (lightweight)
 # ============================================================
 ALCOHOL_TERMS = [
-    "beer", "whiskey", "whisky", "vodka", "rum", "tequila", "gin",
-    "wine", "brandy", "cognac", "sake", "shochu", "mead",
+    "beer",
+    "whiskey",
+    "whisky",
+    "vodka",
+    "rum",
+    "tequila",
+    "gin",
+    "wine",
+    "brandy",
+    "cognac",
+    "sake",
+    "shochu",
+    "mead",
 ]
 
 ALLERGEN_TOKENS = [
@@ -316,7 +472,23 @@ def looks_like_alcohol(text: str) -> bool:
     # Alcohol-ish signals
     if any(k in t for k in ["abv", "alc", "alcohol", "proof", "%", "vol"]):
         return True
-    if any(k in t for k in ["sake", "shochu", "whisky", "whiskey", "vodka", "gin", "rum", "tequila", "wine", "beer", "brandy", "cognac"]):
+    if any(
+        k in t
+        for k in [
+            "sake",
+            "shochu",
+            "whisky",
+            "whiskey",
+            "vodka",
+            "gin",
+            "rum",
+            "tequila",
+            "wine",
+            "beer",
+            "brandy",
+            "cognac",
+        ]
+    ):
         return True
     return False
 
@@ -334,14 +506,16 @@ def system_prompt() -> str:
     Output JSON only: {language, answer}
     """
     return (
-        "You are a friendly liquor-store clerk.\n"
         "You will receive JSON payload with:\n"
         "- customer_text\n"
         "- locale\n"
         "- cuisine (pairing cuisine hint)\n"
         "- target_language\n"
+        "- hemisphere (roughly north or south based on locale)\n"
+        "- season (spring/summer/autumn/winter based on hemisphere and current month)\n"
         "- extracted (basic fields)\n"
-        "- ocr_snippet\n\n"
+        "- ocr_snippet\n"
+        "- store_custom (optional per-shop hints such as location_hint, special_ingredients, special_messages)\n\n"
         "RULES:\n"
         "1) Output JSON ONLY with keys: language, answer.\n"
         "2) language MUST equal payload.target_language.\n"
@@ -350,6 +524,11 @@ def system_prompt() -> str:
         "5) If the user asked for a specific language, follow it.\n"
         "6) Do NOT mention allergens, allergy, wheat/soy/milk/egg, or allergy warnings.\n"
         "7) Be concise but helpful.\n"
+        "8) When store_custom is provided, softly prioritize its location_hint and special_ingredients "
+        "when proposing food pairings (but do NOT mention store_custom by name).\n"
+        "9) Use hemisphere and season to avoid obviously mismatched seasonal suggestions "
+        "(for example, avoid very heavy winter stews in high summer, and avoid summer-only dishes in deep winter), "
+        "unless the store_custom or customer_text explicitly points to a specific dish.\n"
     )
 
 
@@ -462,7 +641,9 @@ def call_llm(messages: List[Dict[str, str]]) -> Dict[str, Any]:
 
     logging.info(f"LLM: calling model={OPENAI_MODEL} messages={len(messages)}")
     try:
-        r = requests.post(url, headers=headers, json=payload, timeout=OPENAI_TIMEOUT_SEC)
+        r = requests.post(
+            url, headers=headers, json=payload, timeout=OPENAI_TIMEOUT_SEC
+        )
         r.raise_for_status()
 
         content = r.json()["choices"][0]["message"]["content"]
@@ -497,7 +678,9 @@ async def analyze_impl(
         sess["preferred_language"] = explicit_lang
 
     # Determine target language (explicit > session > locale default)
-    target_language = sess.get("preferred_language") or locale_to_default_language(client_locale)
+    target_language = sess.get("preferred_language") or locale_to_default_language(
+        client_locale
+    )
     cuisine = locale_to_cuisine(client_locale)
 
     translate_mode = is_translate_request(customer_text)
@@ -522,7 +705,10 @@ async def analyze_impl(
             llm_raw = call_llm(
                 [
                     {"role": "system", "content": translation_system_prompt()},
-                    {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+                    {
+                        "role": "user",
+                        "content": json.dumps(payload, ensure_ascii=False),
+                    },
                 ]
             )
             llm_out = enforce(llm_raw, target_language)
@@ -532,7 +718,9 @@ async def analyze_impl(
         except Exception:
             logging.error("Translation failed; falling back to a short message.")
             llm_out = enforce(
-                {"answer": "Sorry — I couldn't translate that right now. Please try again."},
+                {
+                    "answer": "Sorry — I couldn't translate that right now. Please try again."
+                },
                 target_language,
             )
             sess["last_answer"] = llm_out["answer"]
@@ -553,7 +741,9 @@ async def analyze_impl(
             if is_readable_enough(t):
                 ocr_texts.append(t)
             else:
-                logging.warning(f"OCR not readable enough: file={p.filename!r} chars={len(t)}")
+                logging.warning(
+                    f"OCR not readable enough: file={p.filename!r} chars={len(t)}"
+                )
         except Exception:
             logging.error(f"OCR error: file={p.filename!r}")
             continue
@@ -576,13 +766,18 @@ async def analyze_impl(
             llm_raw = call_llm(
                 [
                     {"role": "system", "content": non_alcohol_system_prompt()},
-                    {"role": "user", "content": json.dumps(joke_payload, ensure_ascii=False)},
+                    {
+                        "role": "user",
+                        "content": json.dumps(joke_payload, ensure_ascii=False),
+                    },
                 ]
             )
             llm_out = enforce(llm_raw, target_language)
         except Exception:
             llm_out = enforce(
-                {"answer": "Oops — this doesn’t look like alcohol 😄  Please send a barcode/label photo of an alcohol product."},
+                {
+                    "answer": "Oops — this doesn’t look like alcohol 😄  Please send a barcode/label photo of an alcohol product."
+                },
                 target_language,
             )
 
@@ -593,11 +788,21 @@ async def analyze_impl(
     # ------------------------------------------------------------------
     # Main LLM call (alcohol or no-photo note-only chat)
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Main LLM call (alcohol or no-photo note-only chat)
+    # ------------------------------------------------------------------
+
+    # locale から hemisphere と season を推定
+    hemisphere = infer_hemisphere_from_locale(client_locale)
+    season = get_season_for_hemisphere(hemisphere)
+
     user_payload = {
         "customer_text": customer_text,
         "locale": client_locale,
         "cuisine": cuisine,
         "target_language": target_language,
+        "hemisphere": hemisphere,  # ★追加
+        "season": season,  # ★追加
         "extracted": {
             # Only safe/basic fields; do not pass allergens
             "alcohol_type": extracted.alcohol_type,
@@ -606,27 +811,35 @@ async def analyze_impl(
             "raw_text_snippet": extracted.raw_text_snippet,
         },
         "ocr_snippet": combined[:600],
+        "store_custom": STORE_CUSTOM,
     }
 
     try:
         llm_raw = call_llm(
             [
                 {"role": "system", "content": system_prompt()},
-                {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+                {
+                    "role": "user",
+                    "content": json.dumps(user_payload, ensure_ascii=False),
+                },
             ]
         )
         llm_out = enforce(llm_raw, target_language)
     except Exception:
         logging.error("LLM failed, returning fallback response.")
         llm_out = enforce(
-            {"answer": "Sorry — something went wrong while generating the response. Please try again."},
+            {
+                "answer": "Sorry — something went wrong while generating the response. Please try again."
+            },
             target_language,
         )
 
     sess["last_answer"] = llm_out["answer"]
     sess["last_payload"] = user_payload
 
-    logging.info(f"Done: session_id={session_id} answer_snip={llm_out['answer'][:100]!r}")
+    logging.info(
+        f"Done: session_id={session_id} answer_snip={llm_out['answer'][:100]!r}"
+    )
     return {"status": "ok", "session_id": session_id, "llm": llm_out}
 
 
@@ -649,7 +862,9 @@ async def analyze(
     client_locale: str = Form(""),
 ):
     n_photos = len(photos) if photos else 0
-    logging.info(f"API /analyze: session_id={session_id!r} photos={n_photos} locale={client_locale!r}")
+    logging.info(
+        f"API /analyze: session_id={session_id!r} photos={n_photos} locale={client_locale!r}"
+    )
     return await analyze_impl(customer_text, session_id, photos or [], client_locale)
 
 

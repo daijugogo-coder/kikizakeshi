@@ -1,0 +1,41 @@
+{
+  "store_name": "Hawaii Sake & Wine Shop",
+  "location_hint": "Honolulu, Hawaii. Warm climate all year, no real winter. Many customers enjoy light, refreshing dishes.",
+  "special_ingredients": [
+    {
+      "id": "hawaiian_poke",
+      "label": "Hawaiian poke (fresh tuna with savory sauce)",
+      "best_with": [
+        "light beer",
+        "crisp white wine",
+        "chilled junmai ginjo sake"
+      ],
+      "season": "all_year"
+    },
+    {
+      "id": "kalua_pork",
+      "label": "Kalua pork (smoky, tender roasted pork)",
+      "best_with": [
+        "amber beer",
+        "light red wine",
+        "medium-bodied sake"
+      ],
+      "season": "all_year"
+    },
+    {
+      "id": "lomi_lomi_salmon",
+      "label": "Lomi-lomi salmon (fresh salmon and tomato salad)",
+      "best_with": [
+        "sparkling wine",
+        "light white wine",
+        "chilled sake"
+      ],
+      "season": "all_year"
+    }
+  ],
+  "special_messages": [
+    "Because Hawaii is warm all year, avoid recommending heavy hot stews unless the customer explicitly asks.",
+    "When in doubt, suggest refreshing dishes with seafood and fresh vegetables.",
+    "If the label looks like a local Hawaiian product, gently mention one local-style pairing as an option."
+  ]
+}
