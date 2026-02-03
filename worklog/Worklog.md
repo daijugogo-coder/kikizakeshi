@@ -1,165 +1,118 @@
-Worklog.md（2026-01-15 時点）
-Kikizakeshi – Location & Season Based Recommendation Upgrade
-1. 背景
+Worklog – Kikizakeshi (Cloud Run Integrated Version)
 
-飲料（主に酒）に合う料理・食材の提案ロジックを改善するため、
-「地域 × 季節 × 店舗カスタム」 の概念を導入。
+Updated: 2026-01-15
 
-ただし、ハードコーディングされた季節・食材テーブルは持たないという方針。
+1. Background
 
-地域・気候・季節の知識は LLM側に委譲し、Python側は最小限のメタ情報だけ提供する構成へ移行。
+The previous Kikizakeshi application was deployed inside a standalone GCP project.
 
-2. 実装方針（確定版）
-■ ハードコーディングしない
+Due to the GCP 3-project limit, consolidation into the existing sake-master project was required.
 
-「北海道の夏はとうもろこし」「ハワイは通年～」などの知識は Python 側には一切持たない。
+The application has now been rebuilt, containerized, and deployed properly using:
+Docker → Artifact Registry → Cloud Run.
 
-季節テーブルや旬の辞書は持たず、LLM に任せる。
+The old Kikizakeshi project remains untouched; the new version under sake-master is considered the primary version going forward.
 
-■ Python側が行う最低限の処理
+2. Work Summary
+2.1 Local Docker verification
 
-locale から大まかな地域/気候の推定（hemisphere）
+Built and executed the application via Docker Desktop.
 
-現在の月 から季節ラベル（spring/summer/autumn/winter）を算出
+All components (UI, OCR, LLM integration, static asset delivery) functioned correctly.
 
-ハワイ向けは後述の JSON による「location_hint」で調整可能
+No runtime errors.
 
-store_custom.json をロードして、店舗ごとの推し情報を user_payload に含める
+2.2 Artifact Registry upload
 
-■ LLM に渡す情報（新仕様）
+Used the existing Artifact Registry repository in the sake-master project.
 
-locale
+Pushed container images with tags such as:
 
-cuisine
+asia-northeast1-docker.pkg.dev/sake-master-481904/kikizakeshi/kikizakeshi:<tag>
 
-hemisphere
+2.3 Cloud Run deployment
 
-season
+Deployment target: sake-master project
 
-extracted（ラベル情報）
+Service name: kikizakeshi
 
-ocr_snippet
+Region: asia-northeast1
 
-store_custom（店舗カスタム） ← New
+Resulting public URL:
 
-LLM はこれらの情報を基に
-**「季節感・地域感・店舗感を踏まえた“食材ベース”の提案」**を生成する。
+https://kikizakeshi-1020268592604.asia-northeast1.run.app/
 
-3. store_custom.json の導入（新機能）
-■ 目的
 
-“店舗ごとの推しやローカル文化”を反映させるオーバーレイレイヤー。
+This URL remains stable unless the service name, region, or project is changed.
 
-Python は触らずに JSON のみを編集すれば挙動を変えられるため、メンテナンス性が非常に高い。
+Redeployments with updated images do not modify the URL.
 
-本番は空の JSON を使い、デモ時だけ内容を入れる運用が可能。
+2.4 Vision API permissions
 
-■ ハワイ向けサンプル（デモ用）
+Cloud Run execution service account:
 
-以下の JSON を store_custom.json として配置すると、
-ハワイの店舗向けの自然なペアリング提案が返される。
+1020268592604-compute@developer.gserviceaccount.com
 
-{
-  "store_name": "Hawaii Sake & Wine Shop",
-  "location_hint": "Honolulu, Hawaii. Warm climate all year.",
-  "special_ingredients": [
-    {
-      "id": "hawaiian_poke",
-      "label": "Hawaiian poke (fresh tuna with savory sauce)",
-      "best_with": [
-        "light beer",
-        "crisp white wine",
-        "chilled junmai ginjo sake"
-      ],
-      "season": "all_year"
-    },
-    {
-      "id": "kalua_pork",
-      "label": "Kalua pork (smoky roasted pork)",
-      "best_with": [
-        "amber beer",
-        "light red wine",
-        "medium-bodied sake"
-      ],
-      "season": "all_year"
-    },
-    {
-      "id": "lomi_lomi_salmon",
-      "label": "Lomi-lomi salmon",
-      "best_with": [
-        "sparkling wine",
-        "light white wine",
-        "chilled sake"
-      ],
-      "season": "all_year"
-    }
-  ],
-  "special_messages": [
-    "Because Hawaii is warm all year, avoid recommending heavy hot stews.",
-    "Highlight refreshing dishes with seafood and fresh vegetables.",
-    "If the product looks local, gently add one Hawaiian-style pairing option."
-  ]
-}
 
-4. main.py 改修（今回実施した内容）
-■ 追加ポイント（全て実装済み）
+This SA already has the necessary Vision AI permissions at the project level.
 
-store_custom.json のロードロジックを追加
-（try/catch 付き、未存在なら空のデフォルト辞書で動作）
+No additional IAM configuration required.
 
-グローバル変数 STORE_CUSTOM に保持
+OCR (including barcode extraction) works correctly on Cloud Run.
 
-user_payload に store_custom を注入
+2.5 Static assets (favicon, icons, CSS)
 
-system_prompt に store_custom の説明と利用ルールを追記
+Verified existence of all icons inside:
 
-実装全体は安全寄りで、JSON が壊れていてもアプリは落ちない
+/static
 
-5. 次にやるべきこと（移行後）
 
-動作確認（ハワイの店舗向け JSON を入れた状態）
-→ 食材ベースの自然な提案が返ってくるかチェック。
+HTML references are correct (/static/favicon.ico, /static/favicon.svg, apple-touch-icon.png).
 
-他地域の JSON のテンプレを作る（必要なら生成可）
+Cloud Run serves the assets correctly; initial issues were caused by browser-side caching.
 
-Washington
+3. Validation Results
 
-California
+Cloud Run service works end-to-end:
 
-Japan: 北海道 / 九州 など
+OCR via Vision API
 
-最終的に本番用は空 JSON にする
-→ 店舗導入時だけ JSON を用意して渡す運用。
+LLM answer generation
 
-6. 仕様上の重要な原則
+Static asset delivery
 
-Python は “知識を持たない”
+Multi-language output
 
-LLM が “旬・地域・季節” を判断する
+Cloud Run revision routing: latest revision receives 100% traffic.
 
-店舗カスタムは 外部 JSON のみ
+Application works as expected under the consolidated project.
 
-拡張性・運用性・説明力に優れる構成
+4. Next Tasks
+Confirmed TODO
 
-## 2026-01-11 – Kikizakeshi Progress
+Maintain README.md in its updated English version.
 
-- **Main.py**:
-  - IP情報を使って国/地域/緯度から気候（tropical/subtropical）を推定し、LLMのpromptに追加
-  - OCRでEAN-13(JAN)を抽出し、`item_id` として返却（チェックデジット検証付き）
-  - LLM出力に`language`, `answer`, `tags`, `item_id`, `notes`を拡張
-  - 非アルコールのアイテムについては断定せず、誤飲やアレルギーの危険話題に触れない
-  - tropical/subtropical の場合、「冬の煮込み系」を避けるルールをpromptで追加
+Use the sake-master project as the unified environment moving forward.
 
-- **index.html**:
-  - Clerkの回答に「Prefer / Not prefer」ボタンを追加（tagsが付与された場合のみ）
-  - IndexedDB（kikizakeshi_local）にユーザーの評価を保存
-  - ユーザーの選好（dry, fruity, strong, fresh, heavy）を過学習しないステップで更新
+Clean up/retire the old Kikizakeshi project later.
 
-- **style.css**:
-  - Prefer / Not preferボタンを追加するスタイルを末尾に追加
+Optional Enhancements
 
-- **進行状況**:
-  - 現在、ローカルでの動作確認を行い、特に「アルコールアイテム」のタグ付けや「非アルコールアイテム」の取り扱いが正しく動作するかを確認中。
-  
-- **次のステップ**:
-  - ローカル確認後、集約先プロジェクトへのデプロイ予定。
+UI refinement
+
+Docker image optimization
+
+Domain mapping if long-term public use is required
+
+Additional LLM enhancements (store_custom, season logic, etc.)
+
+5. Notes
+
+Static asset issues are almost always due to browser caching.
+
+Service account verification is easiest via the Cloud Run YAML tab (Classic UI).
+
+The Cloud Run service URL stays constant unless core service properties change.
+
+Deployment path is now standardized:
+GitHub → Docker build → Artifact Registry → Cloud Run.

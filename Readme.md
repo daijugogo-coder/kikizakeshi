@@ -1,47 +1,116 @@
-# Kikizakeshi (OCR + LLM) Project
+Kikizakeshi — AI Alcohol Label Concierge
 
-## 概要
+FastAPI × Google Vision API × LLM (OpenAI endpoint)
+Hosted on Google Cloud Run
 
-`Kikizakeshi` は、Google Cloud Vision APIを利用して、写真やテキストから日本酒やその他の商品情報を抽出するアプリケーションです。ユーザーがバーコードやラベルの写真を提供することで、AI（OpenAI GPT-4）を使って詳細な商品情報や楽しみ方を多言語で提供します。
+1. Overview
 
-### 主な機能
-- バーコードやラベル写真から商品情報を抽出（OCR機能）
-- 多言語対応で、ロケールに応じた言語で回答
-- 酒類以外の商品にも柔軟に対応（回答調整可能）
-- クラウド環境（Cloud Run）で動作
+Kikizakeshi is an AI-powered web application that analyzes alcohol labels (sake, wine, beer, whiskey, etc.) and returns personalized recommendations.
 
----
+The app performs:
 
-## 動作環境
+OCR label extraction via Google Vision API
 
-このアプリケーションは **Google Cloud Run** 上で動作しています。**Google Cloud Vision API**（OCR処理）を使用して、画像からテキストを抽出し、**OpenAI GPT-4** を用いて商品情報や説明を生成します。
+Keyword and metadata parsing
 
-- **Cloud Run** を利用するため、サービスアカウントの設定が必要です。
-- OCRの動作は、`google-cloud-vision`ライブラリによって提供され、Google Cloudの認証は自動で処理されます。
+LLM-based drink recommendations
 
----
+Multi-language output
 
-## 環境設定
+Zero server-side data retention
 
-### 必要な環境変数
+Designed as a lightweight, serverless POC.
 
-- `OPENAI_API_KEY`: OpenAI APIのAPIキー
-- `OPENAI_MODEL`: 使用するモデル（例: `gpt-4.1-mini`）
-- `OPENAI_BASE_URL`: OpenAI APIのベースURL（通常は `https://api.openai.com/v1`）
+2. Live URL
+https://kikizakeshi-1020268592604.asia-northeast1.run.app/
 
-**Cloud Run上で動作しているため、Google Cloudのサービスアカウントを使用した自動認証が行われ、`GOOGLE_APPLICATION_CREDENTIALS` 環境変数の設定は不要です。**
 
-### GCP環境のサービスアカウント設定
+This URL remains stable unless the service name, project, or region changes.
 
-Cloud Runにデプロイしたアプリケーションでは、サービスアカウントが自動的に認証を行うため、**`GOOGLE_APPLICATION_CREDENTIALS`** の設定は不要です。ただし、Google Cloud Vision APIを使用するために適切なAPIのアクセス権が付与されていることを確認してください。
+3. Features
 
----
+OCR extraction of labels
 
-## インストール方法
+AI recommendation via OpenAI endpoint
 
-ローカル開発環境で実行する場合の手順は以下の通りです。
+Supports multiple alcohol types
 
-1. 必要なパッケージをインストールします：
+Mobile-friendly UI
 
-   ```bash
-   pip install -r requirements.txt
+Fully serverless (Cloud Run)
+
+Static assets delivered from /static
+
+No data stored server-side
+
+4. Project Structure
+root/
+│ main.py
+│ Dockerfile
+│ requirements.txt
+│
+├─ static/
+│    favicon.ico
+│    favicon.svg
+│    apple-touch-icon.png
+│    style.css
+│
+└─ templates/
+     index.html
+
+5. Environment Variables (Cloud Run)
+Key	Description
+OPENAI_API_KEY	OpenAI endpoint key
+OPENAI_MODEL	e.g. gpt-4.1-mini
+LLM_PROVIDER	Defaults to openai
+
+Set these under Cloud Run → Variables & Secrets.
+
+6. Deployment Steps
+1. Build the Docker image
+docker build -t asia-northeast1-docker.pkg.dev/sake-master-481904/kikizakeshi/kikizakeshi:v1 .
+
+2. Push to Artifact Registry
+docker push asia-northeast1-docker.pkg.dev/sake-master-481904/kikizakeshi/kikizakeshi:v1
+
+3. Deploy to Cloud Run (Console)
+
+Select the pushed image
+
+Allow unauthenticated access
+
+Region: asia-northeast1
+
+Re-deploying the service will not change the URL.
+
+7. Static Assets
+
+Static files are served via:
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+Icons are referenced in templates/index.html:
+
+<link rel="icon" href="/static/favicon.ico">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+
+8. Security
+
+OCR: Google Vision API
+
+Cloud Run service account:
+
+1020268592604-compute@developer.gserviceaccount.com
+
+
+Required Vision AI roles already granted at the project level
+
+No persistent data storage
+
+HTTPS only (Cloud Run default)
+
+9. License
+
+This project is currently intended for POC and demonstration purposes only.
